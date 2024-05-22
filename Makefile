@@ -7,7 +7,7 @@ all:	rc2014 rcbus-1802 rcbus-6303 rcbus-6502 rcbus-65c816-mini \
 	makedisk markiv mbc2 smallz80 sbc2g z80mc simple80 flexbox tiny68k \
 	s100-z80 scelbi rb-mbc rcbus-tms9995 rhyophyre pz1 68knano \
 	littleboard mini68k mb020 pico68 z80retro 2063 z50bus-z80 \
-	trcwm6809 swt6809 nybbles scmp2 sbc08k
+	trcwm6809 swt6809 nybbles scmp2 sbc08k ddraig68k
 
 sdl2:	rc2014_sdl2 nc100 nc200 n8_sdl2 scelbi_sdl2 nascom uk101 \
 	z180-mini-itx_sdl2 vz300 2063_sdl2 rcbus-8085_sdl2 max80 \
@@ -172,6 +172,12 @@ sbc08k: sbc08k.o ide.o duart.o 68230.o m68k/lib68k.a
 
 sbc08k.o: sbc08k.c m68k/lib68k.a
 	$(CC) $(CFLAGS) -Im68k -c sbc08k.c
+
+ddraig68k: ddraig68k.o ide.o duart.o 68230.o m68k/lib68k.a
+	cc -g3 ddraig68k.o ide.o duart.o 68230.o m68k/lib68k.a -o ddraig68k
+
+ddraig68k.o: ddraig68k.c m68k/lib68k.a
+	$(CC) $(CFLAGS) -Im68k -c ddraig68k.c
 
 z80mc:	z80mc.o 16x50.o ttycon.o sdcard.o z80dis.o libz80/libz80.o
 	cc -g3 z80mc.o 16x50.o ttycon.o sdcard.o z80dis.o libz80/libz80.o -o z80mc
