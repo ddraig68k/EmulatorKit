@@ -52,6 +52,7 @@
 #include "ide.h"
 #include "duart.h"
 #include "68230.h"
+#include "ps2.h"
 
 static uint8_t ram[16 << 20];	/* allocate the full 16MB of RAM */
 /* 68681 */
@@ -61,14 +62,18 @@ static struct m68230 *pit;
 /* IDE on the 230 */
 static struct ide_controller *ide;
 
+struct ps2 *ps2;
+
 static uint8_t rcount;		/* Counter for the first 8 bytes */
 
 static int trace = 0;
 
-#define TRACE_MEM	1
-#define TRACE_CPU	2
-#define TRACE_DUART	4
-#define TRACE_PIT	8
+#define TRACE_MEM	0x01
+#define TRACE_CPU	0x02
+#define TRACE_DUART	0x04
+#define TRACE_PIT	0x08
+#define TRACE_RTC	0x10
+#define TRACE_PS2	0x20
 
 uint8_t fc;
 
@@ -133,6 +138,98 @@ void m68230_write_port(struct m68230 *pit, unsigned port, uint8_t val)
 uint8_t m68230_read_port(struct m68230 *pit, unsigned port)
 {
 	return 0x00;
+}
+
+static struct tm *tmhold;
+uint8_t rtc_status = 2;
+uint8_t rtc_ce = 0;
+uint8_t rtc_cf = 0;
+
+uint8_t do_rtc_read(uint8_t addr)
+{
+    uint8_t r;
+    if (tmhold == NULL && addr < 13)
+        return 0xFF;
+
+    switch(addr & 0x0F) {
+    case 0:
+        return tmhold->tm_sec % 10;
+    case 1:
+        return tmhold->tm_sec / 10;
+    case 2:
+        return tmhold->tm_min % 10;
+    case 3:
+        return tmhold->tm_min / 10;
+    case 4:
+        return tmhold->tm_hour % 10;
+    case 5:
+        /* Check AM/PM behaviour */
+        r = tmhold->tm_hour;
+        if (rtc_cf & 4)		/* 24hr */
+            r /= 10;
+        else if (r >= 12) {	/* 12hr PM */
+            r -= 12;
+            r /= 10;
+            r |= 4;
+        } else			/* 12hr AM */
+            r /= 10;
+        return r;
+    case 6:
+        return tmhold->tm_mday % 10;
+    case 7:
+        return tmhold->tm_mday / 10;
+    case 8:
+        return tmhold->tm_mon % 10;
+    case 9:
+        return tmhold->tm_mon / 10;
+    case 10:
+        return tmhold->tm_year % 10;
+    case 11:
+        return (tmhold->tm_year %100) / 10;
+    case 12:
+        return tmhold->tm_wday;
+    case 13:
+        return rtc_status;
+    case 14:
+        return rtc_ce;
+    case 15:
+        return 4;
+    }
+    #pragma GCC diagnostic ignored "-Wreturn-type"
+}
+
+uint8_t rtc_read(uint8_t addr)
+{
+    uint8_t v = do_rtc_read(addr);
+    if (trace & TRACE_RTC)
+        fprintf(stderr, "[RTC read %x of %X[\n", addr, v);
+    return v;
+}
+
+void rtc_write(uint8_t addr, uint8_t val)
+{
+    if (trace & TRACE_RTC)
+        fprintf(stderr, "[RTC write %X to %X]\n", addr, val);
+    switch(addr) {
+        case 13:
+            if ((val & 0x04) == 0)
+                rtc_status &= ~4;
+            if (val & 0x01) {
+                time_t t;
+                rtc_status &= ~2;
+                time(&t);
+                tmhold = gmtime(&t);
+            } else
+                rtc_status |= 2;
+            /* FIXME: sort out hold behaviour */
+            break;
+        case 14:
+            rtc_ce = val & 0x0F;
+            break;
+        case 15:
+            rtc_cf = val & 0x0F;
+            break;
+    }
 }
 
 static unsigned int irq_pending;
@@ -204,15 +301,15 @@ unsigned int do_cpu_read_byte(unsigned int address)
 	if (address >= 0xF80000)
 		return ram[address];
 	if (address >= 0xF7F000 && address <= 0xF7F0FF)
-		return duart_read(duart, address >> 1);
+		return duart_read(duart, (address & 0xFF) >> 1);
 	if (address >= 0xF7F100 && address <= 0xF7F1FF)
-		return m68230_read(pit, address >> 1);
+		return m68230_read(pit, (address & 0xFF) >> 1);
 	if (address >= 0xF7F200 && address <= 0xF7F2FF)
 		return 0x00;	// Keyboard controller
 	if (address >= 0xF7F300 && address <= 0xF7F3FF)
 		return ide_read8(ide, (address & 0xFF) >> 1);	// IDE Interface
 	if (address >= 0xF7F400 && address <= 0xF7F4FF)
-		return 0x00;	// RTC
+		return rtc_read((address & 0xFF) >> 1);	// RTC
 	return 0xFF;
 }
 
@@ -268,15 +365,15 @@ void cpu_write_byte(unsigned int address, unsigned int value)
 	if (address < 0x900000)
 		ram[address] = value;
 	else if (address >= 0xF7F000 && address <= 0xF7F0FF)
-		duart_write(duart, address >> 1, value);
+		duart_write(duart, (address & 0xFF) >> 1, value);
 	else if (address >= 0xF7F000 && address < 0xF7F000)
-		m68230_write(pit, address >> 1, value);
+		m68230_write(pit, (address & 0xFF) >> 1, value);
 	else if (address >= 0xF7F200 && address <= 0xF7F2FF)
 		return;	// Keyboard controller
 	else if (address >= 0xF7F300 && address <= 0xF7F3FF)
 		ide_write8(ide, (address & 0xFF) >> 1, value);		// IDE Interface
 	else if (address >= 0xF7F400 && address <= 0xF7F4FF)
-		return;	// RTC
+		rtc_write((address & 0xFF) >> 1, value);	// RTC
 }
 
 void cpu_write_word(unsigned int address, unsigned int value)
