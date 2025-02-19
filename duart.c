@@ -206,7 +206,7 @@ void duart_reset(struct duart *d)
 	d->acr = 0xFF;
 	d->isr = 0;
 	d->imr = 0;
-        d->ivr = 0xF;
+    d->ivr = 0xF;
 	d->port[0].mrp = 0;
 	d->port[0].sr = 0x00;
 	d->port[1].mrp = 0;
@@ -265,7 +265,7 @@ uint8_t duart_read(struct duart *d, uint16_t address)
 	uint8_t value = do_duart_read(d, address);
 	if (d->trace)
 		fprintf(stderr, "duart: read reg %02X -> %02X\n",
-			address >> 1, value);
+			address, value);
 	return value;
 }
 
@@ -277,7 +277,7 @@ void duart_write(struct duart *d, uint16_t address, uint8_t value)
 
 	if (d->trace)
 		fprintf(stderr, "duart: write reg %02X <- %02X\n",
-			address >> 1, value);
+			address, value);
 
 	switch (address & 0x0F) {
 	case 0x00:

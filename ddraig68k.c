@@ -303,7 +303,7 @@ unsigned int do_cpu_read_byte(unsigned int address)
 	if (address >= 0xF7F000 && address <= 0xF7F0FF)
 		return duart_read(duart, (address & 0xFF) >> 1);
 	if (address >= 0xF7F100 && address <= 0xF7F1FF)
-		return m68230_read(pit, (address & 0xFF) >> 1);
+		return m68230_read(pit, (address & 0xFF));
 	if (address >= 0xF7F200 && address <= 0xF7F2FF)
 		return 0x00;	// Keyboard controller
 	if (address >= 0xF7F300 && address <= 0xF7F3FF)
@@ -367,7 +367,7 @@ void cpu_write_byte(unsigned int address, unsigned int value)
 	else if (address >= 0xF7F000 && address <= 0xF7F0FF)
 		duart_write(duart, (address & 0xFF) >> 1, value);
 	else if (address >= 0xF7F000 && address < 0xF7F000)
-		m68230_write(pit, (address & 0xFF) >> 1, value);
+		m68230_write(pit, (address & 0xFF), value);
 	else if (address >= 0xF7F200 && address <= 0xF7F2FF)
 		return;	// Keyboard controller
 	else if (address >= 0xF7F300 && address <= 0xF7F3FF)
@@ -453,7 +453,7 @@ void cpu_set_fc(int fc)
 
 void usage(void)
 {
-	fprintf(stderr, "sbc08k [-r rompath] [-f] [-d debug].\n");
+	fprintf(stderr, "ddraig68k [-r rompath] [-f] [-d debug].\n");
 	exit(1);
 }
 
@@ -465,6 +465,8 @@ int main(int argc, char *argv[])
 	int opt;
 	const char *romname = NULL;
 	const char *diskname = NULL;
+
+	//trace |= TRACE_DUART;
 
 	while((opt = getopt(argc, argv, "i:r:d:f")) != -1) {
 		switch(opt) {
@@ -547,12 +549,9 @@ int main(int argc, char *argv[])
 	/* Init devices */
 	device_init();
 
+
 	while (1) {
-		/* A 10MHz 68008 should do 1000 cycles per 1/10000th of a
-		   second. We do a blind 0.01 second sleep so we are actually
-		   emulating a bit under 10Mhz - which will do fine for
-		   testing this stuff */
-		m68k_execute(600);	/* We don't have an 008 emulation so approx the timing */
+		m68k_execute(1000);
 		duart_tick(duart);
 		m68230_tick(pit, 1000);
 		if (!fast)
